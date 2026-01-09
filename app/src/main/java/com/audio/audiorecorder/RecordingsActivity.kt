@@ -68,15 +68,17 @@ class RecordingsActivity : AppCompatActivity() {
             return
         }
 
+        // FIX: Changed emptyArray() to emptyList<File>() to match the List return type of sortedByDescending
         val recordings = recordingsDir.listFiles { file ->
             file.extension.lowercase(Locale.getDefault()) in listOf("m4a", "mp3", "wav", "aac")
-        }?.sortedByDescending { it.lastModified() } ?: emptyArray()
+        }?.sortedByDescending { it.lastModified() } ?: emptyList<File>()
 
         if (recordings.isEmpty()) {
             binding.tvEmptyState.visibility = View.VISIBLE
         } else {
             binding.tvEmptyState.visibility = View.GONE
-            recordingsAdapter.submitList(recordings.toList())
+            // recordings is already a List, so .toList() is no longer strictly necessary but kept for clarity if preferred
+            recordingsAdapter.submitList(recordings)
         }
     }
 

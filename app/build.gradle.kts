@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.audio.audiorecorder"
-    compileSdk = 35 // Fixed syntax
+    compileSdk = 36 // Fixed syntax
 
     buildFeatures {
         viewBinding = true
@@ -14,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "com.audio.audiorecorder"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
