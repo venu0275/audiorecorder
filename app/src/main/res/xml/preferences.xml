@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory android:title="Audio Settings">
+
+        <ListPreference
+            android:key="audio_source"
+            android:title="Audio Source"
+            android:summary="Select audio source for recording"
+            android:entries="@array/audio_sources"
+            android:entryValues="@array/audio_source_values"
+            android:defaultValue="MIC" />
+
+        <ListPreference
+            android:key="audio_format"
+            android:title="Audio Format"
+            android:summary="Select recording format"
+            android:entries="@array/audio_formats"
+            android:entryValues="@array/audio_format_values"
+            android:defaultValue="m4a" />
+
+        <ListPreference
+            android:key="audio_quality"
+            android:title="Audio Quality"
+            android:summary="Select recording quality"
+            android:entries="@array/audio_qualities"
+            android:entryValues="@array/audio_quality_values"
+            android:defaultValue="high" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="Storage">
+
+        <EditTextPreference
+            android:key="storage_location"
+            android:title="Storage Location"
+            android:summary="Custom storage location"
+            android:dialogTitle="Enter storage path"
+            android:defaultValue="Music/AudioRecordings" />
+
+        <SwitchPreferenceCompat
+            android:key="auto_save"
+            android:title="Auto Save"
+            android:summary="Automatically save recordings"
+            android:defaultValue="true" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="About">
+
+        <Preference
+            android:title="Version"
+            android:summary="1.0.0" />
+
+        <Preference
+            android:title="Privacy Policy"
+            app:fragment="com.audio.audiorecorder.PrivacyPolicyFragment" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>
