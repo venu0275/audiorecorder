@@ -27,6 +27,8 @@ class MainActivity : AppCompatActivity() {
         arrayOf(Manifest.permission.RECORD_AUDIO)
     }
 
+    // In MainActivity.kt
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -38,6 +40,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnRecordings.setOnClickListener {
             startActivity(Intent(this, RecordingsActivity::class.java))
+        }
+
+        
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
 
