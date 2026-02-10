@@ -1,5 +1,26 @@
 <resources>
-    <string name="app_name">Audio Recorder</string>
+    <string name="app_name">Internal Audio Recorder</string>
+    <string name="recording_mode_label">Recording source</string>
+    <string name="start_recording">Start recording</string>
+    <string name="stop">Stop</string>
+    <string name="status_idle">Ready</string>
+    <string name="status_recording">Recording: %1$s</string>
+    <string name="status_error">Error: %1$s</string>
+    <string name="permission_required_message">Audio and notification permissions are required.</string>
+    <string name="media_projection_denied">Screen capture permission is required for internal audio capture.</string>
+    <string name="internal_capture_not_supported">Internal audio capture is supported only on Android 10 and above.</string>
+    <string name="battery_optimization_warning">Battery optimization is enabled. Recordings may stop in background on some devices.</string>
+    <string name="open_battery_settings">Open battery settings</string>
+    <string name="recording_notification_title">Audio recording in progress</string>
+    <string name="recording_notification_message">Source: %1$s</string>
+    <string name="notification_channel_name">Recording service</string>
+    <string name="low_storage_error">Low storage. Please free up space before recording.</string>
+
+    <string-array name="recording_modes">
+        <item>Internal Audio Only (Android 10+)</item>
+        <item>Microphone + Internal Audio (Android 10+)</item>
+        <item>Microphone Only</item>
+    </string-array>
 
     <!-- Arrays for settings -->
     <array name="audio_sources">
