@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="audio_sources">
+        <item>Microphone</item>
+        <item>Internal Audio</item>
+        <item>Microphone + Internal</item>
+    </string-array>
+
+    <string-array name="audio_source_values">
+        <item>MIC</item>
+        <item>INTERNAL</item>
+        <item>MIXED</item>
+    </string-array>
+
+    <string-array name="audio_formats">
+        <item>WAV (High Quality)</item>
+        <item>AAC (Compressed)</item>
+    </string-array>
+
+    <string-array name="audio_format_values">
+        <item>wav</item>
+        <item>aac</item>
+    </string-array>
+
+    <string-array name="audio_qualities">
+        <item>High (44.1 kHz)</item>
+        <item>Medium (22 kHz)</item>
+        <item>Low (11 kHz)</item>
+    </string-array>
+
+    <string-array name="audio_quality_values">
+        <item>44100</item>
+        <item>22050</item>
+        <item>11025</item>
+    </string-array>
+</resources>

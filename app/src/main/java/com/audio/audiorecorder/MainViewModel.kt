@@ -16,5 +16,3 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return File(dir, "Rec_$timestamp.$ext")
     }
 }
-
-enum class RecordingMode { INTERNAL_ONLY, MIC_AND_INTERNAL, MIC_ONLY }
