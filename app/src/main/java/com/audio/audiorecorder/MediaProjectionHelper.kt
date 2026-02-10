@@ -1,25 +1,24 @@
 package com.audio.audiorecorder
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.AudioPlaybackCaptureConfiguration
-import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 
 object MediaProjectionHelper {
 
-    fun getMediaProjection(context: Context, resultCode: Int, resultData: Intent): MediaProjection {
-        val projectionManager = context.getSystemService(MediaProjectionManager::class.java)
-        return projectionManager.getMediaProjection(resultCode, resultData)
-            ?: throw IllegalStateException("MediaProjection not granted")
+    /**
+     * Creates the intent required to launch the system dialog "Start recording or casting with...?"
+     */
+    fun createScreenCaptureIntent(context: Context): Intent {
+        val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        return mediaProjectionManager.createScreenCaptureIntent()
     }
 
-    fun createPlaybackCaptureConfig(mediaProjection: MediaProjection): AudioPlaybackCaptureConfiguration {
-        return AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
-            .build()
+    /**
+     * Checks if the result from the activity is valid for MediaProjection.
+     */
+    fun isValidResult(resultCode: Int, data: Intent?): Boolean {
+        return resultCode == Activity.RESULT_OK && data != null
     }
 }

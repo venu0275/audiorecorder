@@ -2,29 +2,21 @@ package com.audio.audiorecorder
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Build
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import androidx.annotation.RequiresApi
+import kotlinx.coroutines.*
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
-/**
- * Recorder engine for internal and mixed audio capture.
- *
- * This intentionally uses PCM + WAV because internal capture is not directly supported by MediaRecorder.
- */
-class AudioRecorder(
-    private val context: Context,
-) {
+class AudioRecorder(private val context: Context) {
     private val sampleRate = 44_100
     private val channelConfig = AudioFormat.CHANNEL_IN_STEREO
     private val encoding = AudioFormat.ENCODING_PCM_16BIT
@@ -35,84 +27,84 @@ class AudioRecorder(
     private var mediaProjection: MediaProjection? = null
     private var recordingJob: Job? = null
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun startInternalOrMixed(
         mode: RecordingMode,
         outputFile: File,
-        projectionResultCode: Int,
-        projectionData: Intent,
+        resultCode: Int,
+        data: Intent
     ) {
-        require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "Internal capture requires Android 10+"
-        }
-
-        stop()
+        stop() // Ensure clean state
 
         val minBuffer = AudioRecord.getMinBufferSize(sampleRate, channelConfig, encoding)
         val bufferSize = minBuffer.coerceAtLeast(sampleRate * 4)
 
-        mediaProjection = MediaProjectionHelper.getMediaProjection(context, projectionResultCode, projectionData)
-        val playbackConfig = MediaProjectionHelper.createPlaybackCaptureConfig(mediaProjection!!)
+        // 1. Setup MediaProjection
+        val mpManager = context.getSystemService(MediaProjectionManager::class.java)
+        mediaProjection = mpManager.getMediaProjection(resultCode, data)
 
+        // 2. Config for capturing other apps' audio
+        val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
+            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .build()
+
+        // 3. Init Internal Recorder
         internalRecord = AudioRecord.Builder()
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(encoding)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelConfig)
-                    .build(),
-            )
+            .setAudioFormat(AudioFormat.Builder()
+                .setEncoding(encoding)
+                .setSampleRate(sampleRate)
+                .setChannelMask(channelConfig)
+                .build())
             .setBufferSizeInBytes(bufferSize)
             .setAudioPlaybackCaptureConfig(playbackConfig)
             .build()
 
+        // 4. Init Mic Recorder (if mixed mode)
         if (mode == RecordingMode.MIC_AND_INTERNAL) {
             micRecord = AudioRecord.Builder()
                 .setAudioSource(MediaRecorder.AudioSource.MIC)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(encoding)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelConfig)
-                        .build(),
-                )
+                .setAudioFormat(AudioFormat.Builder()
+                    .setEncoding(encoding)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(channelConfig)
+                    .build())
                 .setBufferSizeInBytes(bufferSize)
                 .build()
         }
 
+        // 5. Start Recording Loop
         recordingJob = scope.launch {
             BufferedOutputStream(FileOutputStream(outputFile)).use { output ->
-                WavWriter.writeHeader(
-                    output,
-                    sampleRate = sampleRate,
-                    channels = 2,
-                    bitsPerSample = 16,
-                    pcmDataSize = 0,
-                )
+                // Write placeholder WAV header
+                WavWriter.writeHeader(output, sampleRate, 2, 16, 0)
 
                 internalRecord?.startRecording()
                 micRecord?.startRecording()
 
                 val internalBuffer = ByteArray(bufferSize)
                 val micBuffer = ByteArray(bufferSize)
-                var pcmBytesWritten = 0
+                var totalBytes = 0
 
                 while (isActive) {
-                    val internalRead = internalRecord?.read(internalBuffer, 0, internalBuffer.size) ?: 0
-                    if (internalRead <= 0) continue
+                    val readInternal = internalRecord?.read(internalBuffer, 0, bufferSize) ?: 0
+                    if (readInternal <= 0) continue
 
-                    val mixedData = if (mode == RecordingMode.MIC_AND_INTERNAL) {
-                        val micRead = micRecord?.read(micBuffer, 0, micBuffer.size) ?: 0
-                        AudioMixer.mixPcm16(micBuffer, internalBuffer, micRead, internalRead)
+                    val finalData = if (mode == RecordingMode.MIC_AND_INTERNAL) {
+                        val readMic = micRecord?.read(micBuffer, 0, bufferSize) ?: 0
+                        AudioMixer.mixPcm16(micBuffer, internalBuffer, readMic, readInternal)
                     } else {
-                        internalBuffer.copyOf(internalRead)
+                        internalBuffer.copyOf(readInternal)
                     }
 
-                    output.write(mixedData)
-                    pcmBytesWritten += mixedData.size
+                    output.write(finalData)
+                    totalBytes += finalData.size
                 }
 
                 output.flush()
-                WavWriter.rewriteHeader(outputFile, sampleRate, 2, 16, pcmBytesWritten)
+                // Go back and write correct data size in header
+                WavWriter.rewriteHeader(outputFile, sampleRate, 2, 16, totalBytes)
             }
         }
     }
@@ -120,23 +112,11 @@ class AudioRecorder(
     fun stop() {
         recordingJob?.cancel()
         recordingJob = null
-
         try {
-            internalRecord?.stop()
-        } catch (_: Exception) {
-        }
-
-        try {
-            micRecord?.stop()
-        } catch (_: Exception) {
-        }
-
-        internalRecord?.release()
-        micRecord?.release()
-        internalRecord = null
-        micRecord = null
-
-        mediaProjection?.stop()
-        mediaProjection = null
+            internalRecord?.stop(); internalRecord?.release()
+            micRecord?.stop(); micRecord?.release()
+            mediaProjection?.stop()
+        } catch (e: Exception) { e.printStackTrace() }
+        internalRecord = null; micRecord = null; mediaProjection = null
     }
 }

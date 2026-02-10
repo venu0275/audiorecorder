@@ -2,203 +2,96 @@ package com.audio.audiorecorder
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
-import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.audio.audiorecorder.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val viewModel: MainViewModel by viewModels { MainViewModel.Factory(application) }
+    private val viewModel: MainViewModel by viewModels()
+    private var pendingMode: RecordingMode = RecordingMode.MIC_ONLY
 
-    private var pendingMode: RecordingMode? = null
+    // Permission Request
+    private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (it.values.all { granted -> granted }) startRecordingFlow()
+    }
 
-    private val permissionsLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            val granted = result.values.all { it }
-            if (!granted) {
-                Toast.makeText(this, R.string.permission_required_message, Toast.LENGTH_LONG).show()
-                return@registerForActivityResult
-            }
-            startCaptureFlow()
+    // Media Projection Request
+    private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            startService(pendingMode, result.resultCode, result.data!!)
+        } else {
+            Toast.makeText(this, "Screen Capture Denied", Toast.LENGTH_SHORT).show()
         }
-
-    private val projectionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val mode = pendingMode ?: return@registerForActivityResult
-            if (result.resultCode != Activity.RESULT_OK || result.data == null) {
-                Toast.makeText(this, R.string.media_projection_denied, Toast.LENGTH_LONG).show()
-                return@registerForActivityResult
-            }
-            startService(mode, result.resultCode, result.data)
-        }
-
-    // In MainActivity.kt
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupModeSpinner()
-        setupButtons()
-        renderBatteryOptimizationWarning()
-        observeUi()
-    }
+        val modes = RecordingMode.values().map { it.name }
+        binding.spnMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, modes)
 
-    private fun setupModeSpinner() {
-        val adapter = ArrayAdapter.createFromResource(
-            this,
-            R.array.recording_modes,
-            android.R.layout.simple_spinner_item,
-        )
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spnMode.adapter = adapter
-    }
-
-    private fun setupButtons() {
         binding.btnStart.setOnClickListener {
-            if (!hasStorageSpace()) {
-                Toast.makeText(this, R.string.low_storage_error, Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-
-            pendingMode = RecordingMode.fromSpinnerPosition(binding.spnMode.selectedItemPosition)
-            requestRequiredPermissions()
+            pendingMode = RecordingMode.values()[binding.spnMode.selectedItemPosition]
+            checkPermissions()
         }
 
         binding.btnStop.setOnClickListener {
-            startService(Intent(this, ForegroundRecordingService::class.java).apply {
+            val intent = Intent(this, ForegroundRecordingService::class.java).apply {
                 action = ForegroundRecordingService.ACTION_STOP
-            })
-        }
-
-        binding.btnBatterySettings.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-        }
-
-        
-        binding.btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
-    }
-
-    private fun requestRequiredPermissions() {
-        val permissions = buildList {
-            add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
             }
+            startService(intent)
         }
 
-        val allGranted = permissions.all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        // NEW: Wire up the recordings list button
+        binding.btnViewRecordings.setOnClickListener {
+            startActivity(Intent(this, RecordingsActivity::class.java))
         }
+    }
 
-        if (allGranted) {
-            startCaptureFlow()
+    private fun checkPermissions() {
+        val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+
+        if (perms.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
+            startRecordingFlow()
         } else {
-            permissionsLauncher.launch(permissions.toTypedArray())
+            permLauncher.launch(perms.toTypedArray())
         }
     }
 
-    private fun startCaptureFlow() {
-        val mode = pendingMode ?: return
-        if (mode == RecordingMode.MIC_ONLY) {
-            startService(mode, Activity.RESULT_OK, null)
-            return
+    private fun startRecordingFlow() {
+        if (pendingMode == RecordingMode.MIC_ONLY) {
+            startService(pendingMode, 0, null)
+        } else {
+            val mpManager = getSystemService(MediaProjectionManager::class.java)
+            projectionLauncher.launch(mpManager.createScreenCaptureIntent())
         }
-
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Toast.makeText(this, R.string.internal_capture_not_supported, Toast.LENGTH_LONG).show()
-            return
-        }
-
-        val projectionManager = getSystemService(MediaProjectionManager::class.java)
-        projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
     }
 
-    private fun startService(mode: RecordingMode, projectionResultCode: Int, projectionData: Intent?) {
-        val output = viewModel.buildOutputFile(mode)
-
-        val intent = Intent(this, ForegroundRecordingService::class.java).apply {
+    private fun startService(mode: RecordingMode, resultCode: Int, data: Intent?) {
+        val file = viewModel.getOutputFile(mode)
+        val serviceIntent = Intent(this, ForegroundRecordingService::class.java).apply {
             action = ForegroundRecordingService.ACTION_START
             putExtra(ForegroundRecordingService.EXTRA_MODE, mode.name)
-            putExtra(ForegroundRecordingService.EXTRA_OUTPUT_PATH, output.absolutePath)
-            if (projectionData != null) {
-                putExtra(ForegroundRecordingService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
-                putExtra(ForegroundRecordingService.EXTRA_PROJECTION_DATA, projectionData)
+            putExtra(ForegroundRecordingService.EXTRA_OUTPUT_PATH, file.absolutePath)
+            if (data != null) {
+                putExtra(ForegroundRecordingService.EXTRA_PROJ_CODE, resultCode)
+                putExtra(ForegroundRecordingService.EXTRA_PROJ_DATA, data)
             }
         }
-
-        ContextCompat.startForegroundService(this, intent)
-    }
-
-    private fun hasStorageSpace(): Boolean {
-        val externalDir = getExternalFilesDir(null) ?: return false
-        return externalDir.usableSpace > MIN_FREE_SPACE_BYTES
-    }
-
-    private fun renderBatteryOptimizationWarning() {
-        val manager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val optimized = !manager.isIgnoringBatteryOptimizations(packageName)
-        binding.groupBatteryWarning.visibility = if (optimized) android.view.View.VISIBLE else android.view.View.GONE
-    }
-
-    private fun observeUi() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch {
-                    viewModel.recordingState.collect { state ->
-                        when (state) {
-                            is RecordingState.Idle -> {
-                                binding.tvStatus.text = getString(R.string.status_idle)
-                                binding.btnStart.isEnabled = true
-                                binding.btnStop.isEnabled = false
-                            }
-
-                            is RecordingState.Recording -> {
-                                binding.tvStatus.text = getString(R.string.status_recording, state.fileName)
-                                binding.btnStart.isEnabled = false
-                                binding.btnStop.isEnabled = true
-                            }
-
-                            is RecordingState.Error -> {
-                                binding.tvStatus.text = getString(R.string.status_error, state.message)
-                                binding.btnStart.isEnabled = true
-                                binding.btnStop.isEnabled = false
-                                Toast.makeText(this@MainActivity, state.message, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                }
-
-                launch {
-                    viewModel.timerText.collect { timer ->
-                        binding.tvTimer.text = timer
-                    }
-                }
-            }
-        }
-    }
-
-    companion object {
-        private const val MIN_FREE_SPACE_BYTES = 100L * 1024L * 1024L
+        ContextCompat.startForegroundService(this, serviceIntent)
     }
 }
